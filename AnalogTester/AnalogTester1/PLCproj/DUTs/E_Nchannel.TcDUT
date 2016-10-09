@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4020.3">
+  <DUT Name="E_Nchannel" Id="{ac5cd542-a64f-4d23-9e42-ebe563ffc009}">
+    <Declaration><![CDATA[TYPE E_Nchannel :
+(
+	eNchannel_null := 0,
+	eNchannel_2 := 1,
+	eNchannel_4 := 2,
+	eNchannel_8 := 3
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

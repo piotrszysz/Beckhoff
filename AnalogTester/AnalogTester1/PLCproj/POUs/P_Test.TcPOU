@@ -1,0 +1,367 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4020.3">
+  <POU Name="P_Test" Id="{9b953e57-9650-4e2b-ab1b-349e22299bdd}" SpecialFunc="None">
+    <Declaration><![CDATA[(************************************************************************************)
+(*							Beckhoff Automation Poland								*)
+(*									13.09.2016										*)
+(*								Analog terminal tester								*)
+(*								autor: Piotr Szyszka								*)
+(*																					*)
+(*__________________________________________________________________________________*)
+PROGRAM P_Test
+VAR
+// Choose bus terminals
+bReadData			:	BOOL;							// Read Structure
+bErrorReadData		:	BOOL;							// Setted not all parametres
+bDataSend			:	BOOL;							// Data aquired
+stRefTerminal		:	ST_Terminal;
+stTestTerminal		:	ST_Terminal;
+rtReadData			:	R_TRIG;
+ftClearComboBox		:	F_TRIG;
+sStatusBox			:	STRING(255)		:='Idle';
+sBuffer				:	STRING(255);
+
+eDirection1			:	E_Direction;					// Input=1  Output=2
+eDirection2			:	E_Direction;
+eACtype				:	E_ACtype;						// 0..10V=1	±10V=2	0..20mA=3	4..20mA=4
+eNchannel			:	E_Nchannel;						// 2channels=2	4channels=4		8channels=8
+
+// Test
+bTestEnable				:	BOOL;					// Launch Test procedure
+bTestBusy				:	BOOL;					// Test- busy marker: 1-runned_procedure 0-stopped_procedure
+usiTestCycle			:	USINT	:=	3;			// Amount of test cycle
+iStep					:	INT		:=	0;			// Actual procedure function
+usiActualChannelNumber	:	USINT;					// Actual tested channel
+usiActualCycle			:	USINT;					// Actual test cycle 
+uiFullfilment			:	UINT;					// Percent of signal fullfilment
+usiProcedure			:	USINT;					// Actual procedure
+rPercent				:	REAL;					// TestValue/RefValue [%]
+usiOKsamples			:	USINT;					// Variable summing positive test results.
+usiERRORsamples			:	USINT;					// Variable summing negative test results.
+
+// fbGetTime
+fbGetTime				:	NT_GetTime;
+tpPulse					:	TP;
+rtPulse					:	R_TRIG;
+
+// fbWriteReportToFile
+fbWriteReportToFile		:	FB_WriteReportToFile;	
+rtTestEnable			:	R_TRIG;					// Detecting entering procedure
+ftBreakProcedure		:	F_TRIG;					// Detecting user terminating procedure 
+rtWriteReportToFile		:	R_TRIG;					// Detecting start of saving
+ftWriteReportToFile		:	F_TRIG;					// Detecting end of saving
+stActTime				:	TIMESTRUCT;
+sData					:	STRING(255);			// Variables transfered to actual row in raport
+sPath					:	STRING(255);
+usiTestNumber			:	USINT;
+bWrite					:	BOOL;					// Send data on demand
+tonWait					:	TON;					// Works like 'Continue' in C language
+tpWait					:	TP;						// Works like 'Continue' in C language
+
+// f_Scalling
+rXmin					:	REAL;
+rXmax					:	REAL;
+rYmin					:	REAL;
+rYmax					:	REAL;
+END_VAR
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[A_ChooseBusTerminals();		// Action Block- Visualisation
+
+tpPulse(IN:= NOT tpPulse.Q, PT:= T#1S);
+rtPulse(CLK:= tpPulse.Q);
+fbGetTime(	START:= rtPulse.Q,
+			TMOUT:= T#2S,
+			TIMESTR=> stActTime);
+
+rtWriteReportToFile(clk:=bWrite);
+ftWriteReportToFile();
+fbWriteReportToFile(sHeader:='Czas$tFullfilment [%]$tActChannel$tActCycle$tTestTerminalValue [INT]$tRefTerminalValue [INT]$tTestTerminalValue [V / mA]$tRefTerminalValue [V / mA]$tTestValue/RefValue [%]$tStatus$n',	
+					sData:= sData,
+					sPath:= sPath,
+					stActTime:= stActTime,
+					wNewFileFrequency:= 0,
+					bWrite:= rtWriteReportToFile.Q,		// Write od demand
+					bBusy=> ftWriteReportToFile.CLK );
+					
+tonWait(PT:=T#15MS);	// timer- Works like 'Continue' in C language
+
+CASE iStep OF
+0:	// Detecting start procedure
+	rtTestEnable(clk:=bTestEnable);
+	IF(rtTestEnable.Q AND bErrorReadData=FALSE)	THEN	
+		usiTestNumber:= usiTestNumber + 1;
+		sBuffer:= USINT_TO_STRING(usiTestNumber);
+		sPath:=	CONCAT('C:\Users\Administrator\Desktop\Raport',sBuffer);	// set next file name
+		sPath:=	CONCAT(sPath,'_');
+	
+		bTestBusy:=TRUE;
+		iStep:=10;
+	END_IF
+	
+10:	// Initialization
+	usiActualChannelNumber:= 1; 		
+	usiActualCycle:= 1;
+	uiFullfilment:= 0;
+	bWrite:= FALSE;
+	usiOKsamples:= 0;
+	usiERRORsamples:= 0;
+	
+	CASE stTestTerminal.usiACtype OF	// Choosing right procedure
+		1:	usiProcedure:=1;	// Procedure 1:		Analog > Analog		12-bit		0..10V
+		2:	usiProcedure:=2;	// Procedure 2:		Analog > Analog		12-bit		-10V .. +10V
+		3:	usiProcedure:=3;	// Procedure 3:		Analog > Analog		12-bit		0..20mA
+		4:	usiProcedure:=4;	// Procedure 4:		Analog > Analog		12-bit		4..20mA
+	END_CASE
+	iStep:= 20;
+						
+20:	// Sending header of report procedure to file
+	CASE usiProcedure OF	// Choosing right procedure
+		1:	sData:= 'STARTING PROCEDURE 1: ANALOG > ANALOG 12-bit 0..10V (0..0X7FFF)$n';
+		2:	sData:= 'STARTING PROCEDURE 2: ANALOG > ANALOG 12-bit -10V..+10V (0x8000..0X7FFF)$n';
+		3:	sData:= 'STARTING PROCEDURE 3: ANALOG > ANALOG 12-bit 0..20mA (0..0X7FFF)$n';
+		4:	sData:= 'STARTING PROCEDURE 4: ANALOG > ANALOG 12-bit 4..20mA (0..0X7FFF)$n';
+	END_CASE
+	
+	bWrite:= TRUE;	// Send data to XLS raport. Wait for save.
+	IF(ftWriteReportToFile.Q)	THEN	
+		bWrite:=FALSE;
+		iStep:= 21;
+	END_IF
+	
+21:	sData:='_______________________________________________________________________________________$n';
+	
+	bWrite:= TRUE;	// Send data to XLS raport. Wait for save.
+	IF(ftWriteReportToFile.Q)	THEN	
+		bWrite:=FALSE;
+		iStep:= 30;
+	END_IF
+	
+30:	// Testing channel by channel. 
+	IF(usiActualChannelNumber<=stTestTerminal.usiNchannel)	THEN
+		iStep:= 40;
+	ELSE
+		// Properly end of procedure raport 
+		sBuffer:= 'Test Completed!$n$tSummary:$n$t$tNumber of "OK" results:$t';
+		sData:= CONCAT(sBuffer,USINT_TO_STRING(usiOKsamples));
+		
+		sBuffer:= '$n$t$tNumber of "ERROR" samples:$t';	
+		sData:= CONCAT(sData,sBuffer);	
+		sData:= CONCAT(sData,USINT_TO_STRING(usiERRORsamples));
+		
+		bWrite:= TRUE;	// Send data to XLS raport. Wait for save.
+		IF(ftWriteReportToFile.Q)	THEN	
+			bWrite:=FALSE;
+			iStep:= 70;
+		END_IF
+	END_IF
+	
+40:	// Checking amount of cycles
+	IF(usiActualCycle<=usiTestCycle) THEN // test 0..100% Volt fullfilment 
+		iStep:= 50;
+	ELSE	// test next channel
+		usiActualChannelNumber:= usiActualChannelNumber+1;
+		usiActualCycle:= 1;
+		iStep:= 30; // Check again ActualChannel
+	END_IF
+	
+50:	// Increasing Voltage
+	CASE usiProcedure OF
+		1:	rXmin:=	0;	rXmax:= 100;	rYmin:= 0;		rYmax:= 32767;
+		2:	rXmin:=	0;	rXmax:= 100;	rYmin:= -32768;	rYmax:= 32767;
+		3:	rXmin:=	0;	rXmax:= 100;	rYmin:= 0;		rYmax:= 32767;
+		4:	rXmin:=	0;	rXmax:= 100;	rYmin:= 0;		rYmax:= 32767;
+	END_CASE
+	IF(uiFullfilment<100)	THEN
+		IF (uiFullfilment=0)	THEN
+			aiOUTchannel[usiActualChannelNumber]:= REAL_TO_INT(	F_Scaling(	rValue:= uiFullfilment,
+																		rXmin:= rXmin, rXmax:= rXmax,
+																		rYmin:= rYmin, rYmax:= rYmax));
+			uiFullfilment:=uiFullfilment+1;
+		ELSE
+			uiFullfilment:=uiFullfilment+1;
+			aiOUTchannel[usiActualChannelNumber]:= REAL_TO_INT(	F_Scaling(	rValue:= uiFullfilment,
+																		rXmin:= rXmin, rXmax:= rXmax,
+																		rYmin:= rYmin, rYmax:= rYmax));
+		END_IF
+	ELSE
+		usiActualCycle:= usiActualCycle+1;
+		uiFullfilment:= 0;
+		iStep:= 40;
+		RETURN;		// 'Continue'
+	END_IF
+	iStep:= 60;
+	
+60:	// Actual probe raport
+	tonWait.IN := TRUE;	// Wait for next PLC cycle for gain I/O data.
+	IF tonWait.Q THEN
+		CASE usiProcedure OF	// INT to Volt/mAmper scalling
+			1:	rXmin:=	0;		rXmax:= 32767;	rYmin:= 0;		rYmax:= 10;
+			2:	rXmin:=	-32768;	rXmax:= 32767;	rYmin:= -10;	rYmax:= 10;
+			3:	rXmin:=	0;		rXmax:= 32767;	rYmin:= 0;		rYmax:= 20;
+			4:	rXmin:=	0;		rXmax:= 32767;	rYmin:= 4;		rYmax:= 20;
+		END_CASE
+		
+		sData:= UINT_TO_STRING(uiFullfilment);
+		sData:= CONCAT(sData, '$t');	
+		
+		sBuffer:=USINT_TO_STRING(usiActualChannelNumber);
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');
+		
+		sBuffer:=USINT_TO_STRING(usiActualCycle);
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');
+		
+		sBuffer:=INT_TO_STRING( aiINchannel[usiActualChannelNumber] );
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');
+		
+		sBuffer:=INT_TO_STRING( aiOUTchannel[usiActualChannelNumber] );
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');	
+		
+		sBuffer:=REAL_TO_STRING(	F_Scaling(	rValue:= aiINchannel[usiActualChannelNumber],
+												rXmin:= rXmin, rXmax:= rXmax,
+												rYmin:= rYmin, rYmax:= rYmax)	);
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');	
+		
+		sBuffer:=REAL_TO_STRING(	F_Scaling(	rValue:= aiOUTchannel[usiActualChannelNumber],
+												rXmin:= rXmin, rXmax:= rXmax,
+												rYmin:= rYmin, rYmax:= rYmax)	);
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');
+		
+		IF(aiOUTchannel[usiActualChannelNumber]=0)	THEN
+			sBuffer:='DIV/0 !'; // Division by 0!
+		ELSE
+			rPercent:= INT_TO_REAL(aiINchannel[usiActualChannelNumber]) / INT_TO_REAL(aiOUTchannel[usiActualChannelNumber]) *100;
+			sBuffer:=REAL_TO_STRING(rPercent);
+		END_IF
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$t');	
+		
+		IF(aiOUTchannel[usiActualChannelNumber]<>0 AND rPercent>95 AND rPercent<105)	THEN	// Set error limit (default 95..105% is OK)
+			sBuffer:='OK';
+			usiOKsamples:= usiOKsamples+1;
+		ELSIF(aiOUTchannel[usiActualChannelNumber]=0)	THEN
+			sBuffer:='null'; // Division by 0!
+		ELSE
+			sBuffer:='ERROR';
+			usiERRORsamples:= usiERRORsamples+1;
+		END_IF
+		sData:= CONCAT(sData, sBuffer);
+		sData:= CONCAT(sData, '$n');	// endl. Ready to send
+		
+		IF(uiFullfilment=100 AND usiActualCycle=usiTestCycle)	THEN
+			sBuffer:= '$t-$tNext channel$n';
+			sData:= CONCAT(sData, sBuffer);
+		ELSIF(uiFullfilment=100)	THEN	// Additional text for next cycle, channel...
+			sBuffer:= '$t-$t$tNext cycle$n';
+			sData:= CONCAT(sData, sBuffer);
+		END_IF
+		
+		bWrite:= TRUE;
+	END_IF	
+	IF(ftWriteReportToFile.Q)	THEN
+		bWrite:=FALSE;
+		tonWait.IN := FALSE;
+		iStep:= 65;
+	END_IF
+
+65:	// Refresh sStatusBox in VISU
+	sStatusBox:= 'Raport file path:$n';
+	sStatusBox:= CONCAT(sStatusBox, sPath);
+	
+	sBuffer:= '$nActual Status:$nFullfilment: ';
+	sStatusBox:= CONCAT(sStatusBox, sBuffer);
+	
+	sBuffer:= UINT_TO_STRING(uiFullfilment);
+	sStatusBox:= CONCAT(sStatusBox, sBuffer);
+	
+	sBuffer:= '% | Actual Cycle: ';
+	sStatusBox:= CONCAT(sStatusBox, sBuffer);
+	
+	sBuffer:= USINT_TO_STRING(usiActualCycle);
+	sStatusBox:= CONCAT(sStatusBox, sBuffer);
+	
+	sBuffer:= ' | Actual Channel: ';
+	sStatusBox:= CONCAT(sStatusBox, sBuffer);
+	
+	sBuffer:= USINT_TO_STRING(usiActualChannelNumber);
+	sStatusBox:= CONCAT(sStatusBox, sBuffer);
+	
+	iStep:= 80;
+	
+70:	// Quit procedure
+	IF(sStatusBox<>'Procedure terminated by user!')	THEN	
+		sStatusBox:= 'Test completed!$nNumber of ERROR samples: ';	
+		sStatusBox:= CONCAT(sStatusBox,USINT_TO_STRING(usiERRORsamples));
+		IF(usiERRORsamples=0)	THEN
+			sStatusBox:= CONCAT(sStatusBox,'$nTested terminal works correctly.');
+		END_IF
+	END_IF
+	bTestBusy:=FALSE;
+	iStep:=0;
+
+80: // Detecting break procedure- Terminated by user
+	ftBreakProcedure(CLK:= bTestEnable);
+	IF(ftBreakProcedure.Q = TRUE) THEN
+		sData:= 'Procedure terminated by user!$n';
+		sStatusBox:= 'Procedure terminated by user!';
+		bWrite:= TRUE;
+	ELSIF(ftWriteReportToFile.Q AND bTestEnable=FALSE)	THEN	// wait for write
+			bWrite:=FALSE;
+			iStep:= 70;
+	ELSIF (bWrite=FALSE)	THEN
+		iStep:= 50;	// go back to procedure
+	END_IF
+	
+END_CASE]]></ST>
+    </Implementation>
+    <Action Name="A_ChooseBusTerminals" Id="{f6c9716f-7246-49e5-9750-a2f350463aef}">
+      <Implementation>
+        <ST><![CDATA[rtReadData(clk:= bReadData);
+
+// Loading terminals parameters from HMI
+IF(rtReadData.Q)	THEN
+	IF(	eDirection1>0 AND eDirection2>0 AND eACtype>0 AND eNchannel>0) THEN // chceck if all fields in HMI was choosen properly
+			// Tested terminal
+			stTestTerminal.usiDirection:= INT_TO_USINT(eDirection1);
+			stTestTerminal.usiACtype:= INT_TO_USINT(eACtype);
+			CASE eNchannel OF
+				1:	stTestTerminal.usiNchannel:= 2;
+				2:	stTestTerminal.usiNchannel:= 4;
+				ELSE stTestTerminal.usiNchannel:= 8;
+			END_CASE	
+			
+			// Reference terminal
+			stRefTerminal.usiDirection:= INT_TO_USINT(eDirection2);
+			
+			bErrorReadData:= FALSE;
+			bDataSend:= TRUE;
+			sStatusBox:= 'Data Aquired';
+		
+	ELSE // error input data
+			bErrorReadData:= TRUE;
+			bDataSend:= FALSE;
+			sStatusBox:= 'Not enough input arguments!';
+	END_IF	
+END_IF
+
+
+// Zerowanie Combo Box w HMI
+ftClearComboBox(clk:= bDataSend);
+IF( ftClearComboBox.Q AND ( LEN(stRefTerminal.sParameters)>30 OR LEN(stTestTerminal.sParameters)>30 ) )	THEN
+	eDirection1:=0;
+	eACtype:=0;
+	eNchannel:=0;
+	eDirection2:=0;
+END_IF
+]]></ST>
+      </Implementation>
+    </Action>
+  </POU>
+</TcPlcObject>

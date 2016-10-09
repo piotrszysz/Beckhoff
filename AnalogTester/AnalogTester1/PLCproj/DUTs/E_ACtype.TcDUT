@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4020.3">
+  <DUT Name="E_ACtype" Id="{49f975ef-a90d-4108-9a43-422f995d74f3}">
+    <Declaration><![CDATA[TYPE E_ACtype :
+(
+	eACtype_null		:= 0,
+	eACtype_0_10V		:= 1,
+	eACtype_pl_min10V	:= 2,
+	eACtype_0_20mA	:= 3,
+	eACtype_4_20mA	:= 4
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

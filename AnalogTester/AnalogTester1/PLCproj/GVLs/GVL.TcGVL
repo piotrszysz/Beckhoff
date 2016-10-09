@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4020.3">
+  <GVL Name="GVL" Id="{094cc13e-ec42-4170-952e-becc1e4cc239}">
+    <Declaration><![CDATA[VAR_GLOBAL
+	 aiINchannel		AT %I*	:	ARRAY [1..8] OF  INT;
+	 aiOUTchannel		AT %Q*	:	ARRAY [1..8] OF  INT;
+	 
+
+	 
+	// aiINchannel		:	ARRAY [1..8] OF  INT;
+	// aiOUTchannel		:	ARRAY [1..8] OF  INT;
+END_VAR
+]]></Declaration>
+  </GVL>
+</TcPlcObject>

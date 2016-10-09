@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4020.3">
+  <POU Name="MAIN" Id="{9eecf81c-c59f-4fa4-885a-6bf8c6825899}" SpecialFunc="None">
+    <Declaration><![CDATA[(************************************************************************************)
+(*							Beckhoff Automation Poland								*)
+(*									13.09.2016										*)
+(*								autor: Piotr Szyszka								*)
+(*		Analog tester. Allows to chceck suspected with referenced terminal.			*)
+(*						Please check preferences in local files.					*)
+(*__________________________________________________________________________________*)
+PROGRAM MAIN
+VAR
+
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[P_Test();
+
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

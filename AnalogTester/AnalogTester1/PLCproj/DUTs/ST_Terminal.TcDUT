@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4020.3">
+  <DUT Name="ST_Terminal" Id="{bdb99428-fb3f-447b-ad39-e0f2c71daeed}">
+    <Declaration><![CDATA[TYPE ST_Terminal :
+STRUCT
+	usiDirection		:	USINT;							// Input=1  Output=2
+	usiACtype			:	USINT;							// 0..10__±10V__0..20mA__4..20mA 
+	usiNchannel			:	USINT;							// Amount of channel
+	usiBitConventer		:	USINT;							// N-bit conventer
+	sParameters			:	STRING(256);					// Message displayed in HMI during setup terminal type
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>
